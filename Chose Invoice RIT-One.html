@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIT-One - Generador de Facturas Online</title>
+    <!-- Asumiendo que M-TERA.css contiene estilos base útiles -->
+    <link rel="stylesheet" href="M-TERA.css">
+    <!-- Estilos específicos para la factura (opcional, podría estar en M-TERA.css o un nuevo archivo) -->
+    <!-- <link rel="stylesheet" href="RIT-One-Invoice.css"> -->
+    <!-- Iconos Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Estilos rápidos adicionales si no se usa un CSS específico */
+        body {
+            background-color: #1a1a1a; /* Fondo oscuro similar a M-TERA */
+            color: #f5f5f5; /* Texto claro */
+        }
+        .container { max-width: 1200px; margin: 2em auto; background-color: #252525; padding: 2em; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .invoice-box { background-color: #2c2c2c; border: 1px solid #444; border-radius: 8px; }
+        .invoice-box legend { color: #d4af37; font-size: 1.2em; padding: 0 0.5em; font-weight: bold; }
+        .invoice-box fieldset { border: 1px solid #555; margin-bottom: 1.5em; padding: 1em 1.5em; border-radius: 4px; }
+        .form-group label { display: block; margin-bottom: 0.5em; font-weight: bold; color: #ccc; }
+        .form-control { background-color: #333; border: 1px solid #555; color: #f5f5f5; border-radius: 4px; padding: 10px; width: 100%; box-sizing: border-box; }
+        .form-control:focus { border-color: #d4af37; outline: none; box-shadow: 0 0 5px rgba(212, 175, 55, 0.5); }
+        textarea.form-control { min-height: 60px; }
+        .item-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+        .item-row input[name="item-description[]"] { flex: 3 1 250px; /* Más espacio para descripción */ }
+        .item-row input[type="number"] { flex: 1 1 70px; max-width: 100px; text-align: right; }
+        .item-row .item-total { flex: 0 0 100px; text-align: right; background-color: #383838; padding: 8px; border-radius: 4px; font-weight: bold; }
+        .totals-section { text-align: right; }
+        .totals-section div { margin-bottom: 0.7em; font-size: 1.1em; }
+        .totals-section strong { display: inline-block; min-width: 100px; color: #ccc; }
+        .totals-section span { color: #f5f5f5; font-weight: bold; margin-left: 10px;}
+        .remove-item-btn { background: #dc3545; color: white; border: none; padding: 8px 12px; cursor: pointer; border-radius: 4px; line-height: 1; }
+        .remove-item-btn:hover { background: #c82333; }
+        #invoice-preview-section { border: 1px dashed #555; margin-top: 2em; padding: 1.5em; background-color: #1f1f1f; border-radius: 5px;}
+        #logo-preview { max-width: 150px; max-height: 100px; margin-top: 10px; display: block; border: 1px solid #444; padding: 5px; background: #fff; border-radius: 4px;}
+        .button { background-color: #d4af37; color: #111; border: none; padding: 12px 25px; font-size: 1rem; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease, transform 0.1s ease; font-weight: bold; margin: 5px; }
+        .button:hover { background-color: #b89a30; }
+        .button:active { transform: scale(0.98); }
+        .button i { margin-right: 8px; }
+        /* Flex layout for columns */
+        .columns-container { display: flex; gap: 2em; flex-wrap: wrap; }
+        .column { flex: 1; min-width: 300px; }
+
+        /* Estilos específicos para la previsualización dentro del contenedor oscuro */
+        #invoice-preview {
+            background-color: #fff; /* Fondo blanco para la previsualización */
+            color: #333; /* Texto oscuro para la previsualización */
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+            /* Asegurar que el contenido interno no herede padding que interfiera con html2pdf */
+            overflow: hidden; /* Puede ayudar a contener elementos flotantes o con márgenes */
+        }
+        /* Asegurar que los estilos de previsualización generados por JS no se vean afectados por el tema oscuro */
+        #invoice-preview .preview-container {
+             /* Estos estilos se aplicarán dinámicamente, pero podemos definir algunos defaults */
+             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+             color: #333;
+             background-color: #fff;
+             max-width: 800px; /* Ancho típico A4 */
+             margin: auto; /* Centrado dentro de #invoice-preview si es más ancho */
+             /* El padding se aplica dentro de generatePreviewHTML */
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <header class="text-center mb-2">
+        <h1><i class="fas fa-file-invoice-dollar text-gold"></i> RIT-One Generador de Facturas</h1>
+        <p class="text-light">Crea facturas profesionales de forma rápida, sencilla y con estilo.</p>
+    </header>
+
+    <main>
+        <form id="invoice-form" class="invoice-box p-2">
+
+            <div class="columns-container">
+                <!-- Columna Izquierda: Emisor y Receptor -->
+                <div class="column">
+                    <fieldset>
+                        <legend><i class="fas fa-building text-gold"></i> Tus Datos (Emisor)</legend>
+                        <div class="form-group">
+                            <label for="sender-name">Nombre o Empresa:</label>
+                            <input type="text" id="sender-name" name="sender-name" class="form-control" placeholder="Tu Nombre S.L." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sender-address">Dirección:</label>
+                            <textarea id="sender-address" name="sender-address" rows="2" class="form-control" placeholder="Calle Falsa 123, Ciudad" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="sender-tax-id">NIF/CIF:</label>
+                            <input type="text" id="sender-tax-id" name="sender-tax-id" class="form-control" placeholder="B12345678">
+                        </div>
+                         <div class="form-group">
+                            <label for="sender-contact">Contacto (Email/Teléfono):</label>
+                            <input type="text" id="sender-contact" name="sender-contact" class="form-control" placeholder="info@tuempresa.com">
+                        </div>
+                         <div class="form-group">
+                             <label for="logo-upload"><i class="fas fa-image"></i> Logo (Opcional):</label>
+                             <input type="file" id="logo-upload" name="logo-upload" class="form-control" accept="image/*">
+                             <img id="logo-preview" src="#" alt="Previsualización del Logo" style="display: none;"/>
+                         </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend><i class="fas fa-user-tie text-gold"></i> Datos del Cliente (Receptor)</legend>
+                        <div class="form-group">
+                            <label for="recipient-name">Nombre o Empresa:</label>
+                            <input type="text" id="recipient-name" name="recipient-name" class="form-control" placeholder="Cliente Importante S.A." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="recipient-address">Dirección:</label>
+                            <textarea id="recipient-address" name="recipient-address" rows="2" class="form-control" placeholder="Avenida Siempreviva 742, Otra Ciudad" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="recipient-tax-id">NIF/CIF:</label>
+                            <input type="text" id="recipient-tax-id" name="recipient-tax-id" class="form-control" placeholder="A87654321">
+                        </div>
+                         <div class="form-group">
+                            <label for="recipient-contact">Contacto (Email):</label>
+                            <input type="email" id="recipient-contact" name="recipient-contact" class="form-control" placeholder="contacto@cliente.com">
+                        </div>
+                    </fieldset>
+                </div>
+
+                <!-- Columna Derecha: Detalles Factura y Personalización -->
+                <div class="column">
+                     <fieldset>
+                        <legend><i class="fas fa-info-circle text-gold"></i> Detalles de la Factura</legend>
+                        <div class="form-group">
+                            <label for="invoice-number">Número de Factura:</label>
+                            <input type="text" id="invoice-number" name="invoice-number" class="form-control" placeholder="FACT-2024-001" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="invoice-date">Fecha de Emisión:</label>
+                            <input type="date" id="invoice-date" name="invoice-date" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="due-date">Fecha de Vencimiento:</label>
+                            <input type="date" id="due-date" name="due-date" class="form-control">
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend><i class="fas fa-palette text-gold"></i> Personalización</legend>
+                         <div class="form-group">
+                            <label for="invoice-color">Color Principal:</label>
+                            <input type="color" id="invoice-color" name="invoice-color" class="form-control" value="#d4af37" style="padding: 2px; height: 40px;">
+                         </div>
+                         <div class="form-group">
+                             <label for="invoice-template">Plantilla:</label>
+                             <select id="invoice-template" name="invoice-template" class="form-control">
+                                 <option value="moderna" selected>Moderna</option>
+                                 <option value="clasica">Clásica</option>
+                                 <option value="compacta">Compacta</option>
+                             </select>
+                         </div>
+                         <div class="form-group">
+                             <label for="currency-symbol">Símbolo Moneda:</label>
+                             <input type="text" id="currency-symbol" name="currency-symbol" class="form-control" value="€" style="max-width: 80px;">
+                         </div>
+                    </fieldset>
+                </div>
+            </div>
+
+            <hr> <!-- Separador visual -->
+
+            <fieldset>
+                <legend><i class="fas fa-list-ul text-gold"></i> Conceptos</legend>
+                <div id="invoice-items">
+                    <!-- Las filas de items se añadirán aquí con JS -->
+                </div>
+                <button type="button" id="add-item-btn" class="button mt-1"><i class="fas fa-plus"></i> Añadir Concepto</button>
+            </fieldset>
+
+            <hr> <!-- Separador visual -->
+
+            <div class="columns-container">
+                 <!-- Columna Izquierda: Notas -->
+                <div class="column" style="flex: 2;"> <!-- Más espacio para notas -->
+                    <fieldset>
+                        <legend><i class="fas fa-sticky-note text-gold"></i> Notas / Términos y Condiciones</legend>
+                        <div class="form-group">
+                            <textarea id="notes" name="notes" rows="5" class="form-control" placeholder="Ej: Condiciones de pago: 30 días neto. Información bancaria para transferencia. Gracias por su confianza."></textarea>
+                        </div>
+                    </fieldset>
+                </div>
+                 <!-- Columna Derecha: Totales -->
+                <div class="column totals-section">
+                     <fieldset>
+                         <legend><i class="fas fa-calculator text-gold"></i> Totales</legend>
+                         <div>
+                             <strong>Subtotal:</strong> <span id="subtotal">0.00 €</span>
+                         </div>
+                         <div class="form-group" style="display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-bottom: 1em;">
+                             <label for="tax-rate" style="margin-bottom: 0; flex-shrink: 0;">IVA (%):</label>
+                             <input type="number" id="tax-rate" name="tax-rate" class="form-control" value="21" min="0" step="any" style="max-width: 80px; text-align: right; padding: 5px;">
+                         </div>
+                         <div>
+                             <strong>IVA:</strong> <span id="tax-amount">0.00 €</span>
+                         </div>
+                         <hr style="margin: 1em 0; border-color: #555;">
+                         <div>
+                             <strong class="text-gold" style="font-size: 1.3em;">Total:</strong>
+                             <span id="total-amount" class="text-gold" style="font-size: 1.3em; font-weight: bold;">0.00 €</span>
+                         </div>
+                     </fieldset>
+                </div>
+            </div>
+
+            <div class="text-center mt-2 mb-1">
+                <button type="button" id="preview-btn" class="button"><i class="fas fa-eye"></i> Previsualizar Factura</button>
+                <button type="button" id="copy-btn" class="button"><i class="fas fa-copy"></i> Copiar Factura</button>
+                <button type="reset" class="button" style="background-color: #6c757d;"><i class="fas fa-undo"></i> Limpiar Formulario</button>
+            </div>
+
+        </form>
+
+        <!-- Sección de Previsualización -->
+        <section id="invoice-preview-section" class="mt-2" style="display: none;">
+            <h2><i class="fas fa-search text-gold"></i> Previsualización</h2>
+            <div id="invoice-preview"> <!-- Contenedor interno para fondo blanco -->
+                <!-- El contenido de la previsualización se generará aquí con JS -->
+                <p class="text-muted text-center" style="color: #666;">La previsualización de la factura aparecerá aquí...</p>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="text-center p-2 mt-2">
+        <p>&copy; 2024 RIT-One Invoice Generator. Desarrollado con <i class="fas fa-heart text-gold"></i>.</p>
+        <p><a href="#" style="color: #d4af37;">Términos de Servicio</a> | <a href="#" style="color: #d4af37;">Política de Privacidad</a></p>
+    </footer>
+
+</div> <!-- Fin .container -->
+
+<!-- Librería html2canvas para generar imagen -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+<!-- Script Adicional -->
+<script src="SDS.js"></script>
+
+<!-- Scripts para funcionalidad -->
+<script>
+    // --- Elementos del DOM ---
+    const invoiceForm = document.getElementById('invoice-form');
+    const itemsContainer = document.getElementById('invoice-items');
+    const addItemBtn = document.getElementById('add-item-btn');
+    const previewBtn = document.getElementById('preview-btn');
+    const copyBtn = document.getElementById('copy-btn'); // Renombrado de downloadBtn
+    const previewSection = document.getElementById('invoice-preview-section');
+    const previewContent = document.getElementById('invoice-preview');
+    const logoUpload = document.getElementById('logo-upload');
+    const logoPreview = document.getElementById('logo-preview');
+    const currencySymbolInput = document.getElementById('currency-symbol');
+
+    // --- Funciones ---
+
+    function getCurrencySymbol() {
+        return currencySymbolInput.value || '€';
+    }
+
+    function formatCurrency(amount) {
+        const symbol = getCurrencySymbol();
+        // Maneja números inválidos o NaN
+        if (isNaN(amount)) {
+            amount = 0;
+        }
+        // Usar Intl.NumberFormat para un formato más robusto (opcional, requiere configuración de locale)
+        // return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount); // Ejemplo EUR
+        return `${amount.toFixed(2)} ${symbol}`;
+    }
+
+    function createItemRow() {
+        const newItemRow = document.createElement('div');
+        newItemRow.classList.add('item-row');
+        newItemRow.innerHTML = `
+            <input type="text" name="item-description[]" class="form-control" placeholder="Descripción del servicio o producto">
+            <input type="number" name="item-quantity[]" class="form-control" placeholder="Cant." value="1" min="0" step="any">
+            <input type="number" name="item-price[]" class="form-control" placeholder="Precio Unit." min="0" step="0.01">
+            <span class="item-total text-light">${formatCurrency(0)}</span>
+            <button type="button" class="remove-item-btn" title="Eliminar concepto"><i class="fas fa-trash-alt"></i></button>
+        `;
+        // Añadir listeners a los nuevos elementos
+        newItemRow.querySelector('.remove-item-btn').addEventListener('click', () => removeItem(newItemRow));
+        newItemRow.querySelectorAll('input[type="number"], input[type="text"]').forEach(input => input.addEventListener('input', calculateTotals)); // Escuchar cambios en descripción también por si acaso
+        return newItemRow;
+    }
+
+    function addItem() {
+        itemsContainer.appendChild(createItemRow());
+        calculateTotals(); // Recalcular por si acaso
+    }
+
+    function removeItem(itemRow) {
+        itemRow.remove();
+        calculateTotals(); // Recalcular después de eliminar
+    }
+
+    function calculateTotals() {
+        let subtotal = 0;
+        const itemRows = itemsContainer.querySelectorAll('.item-row');
+
+        itemRows.forEach(row => {
+            const quantityInput = row.querySelector('input[name="item-quantity[]"]');
+            const priceInput = row.querySelector('input[name="item-price[]"]');
+            const itemTotalSpan = row.querySelector('.item-total');
+
+            const quantity = parseFloat(quantityInput.value) || 0;
+            const price = parseFloat(priceInput.value) || 0;
+            const itemTotal = quantity * price;
+
+            itemTotalSpan.textContent = formatCurrency(itemTotal);
+            subtotal += itemTotal;
+        });
+
+        const taxRateInput = document.getElementById('tax-rate');
+        const taxRate = parseFloat(taxRateInput.value) || 0;
+        const taxAmount = subtotal * (taxRate / 100);
+        const totalAmount = subtotal + taxAmount;
+
+        document.getElementById('subtotal').textContent = formatCurrency(subtotal);
+        document.getElementById('tax-amount').textContent = formatCurrency(taxAmount);
+        document.getElementById('total-amount').textContent = formatCurrency(totalAmount);
+
+        // Actualizar previsualización dinámicamente si está visible
+        if (previewSection.style.display !== 'none') {
+            showPreview();
+        }
+    }
+
+    function generatePreviewHTML() {
+        // --- Recopilar datos del formulario ---
+        const getVal = (id) => document.getElementById(id).value.trim();
+        const getHTML = (id) => getVal(id).replace(/\n/g, '<br>'); // Reemplaza saltos de línea por <br>
+        const symbol = getCurrencySymbol();
+
+        const senderName = getVal('sender-name') || 'Tu Empresa';
+        const senderAddress = getHTML('sender-address') || 'Tu Dirección';
+        const senderTaxId = getVal('sender-tax-id');
+        const senderContact = getVal('sender-contact') || 'Tu Contacto';
+        const logoSrc = logoPreview.src;
+        // Verifica que el logo sea visible, tenga una fuente válida (no '#' ni la URL base) y no sea un placeholder de data:
+        const logoVisible = logoPreview.style.display !== 'none' && logoSrc && logoSrc !== '#' && !logoSrc.startsWith('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7') && logoSrc !== window.location.href;
+
+        const recipientName = getVal('recipient-name') || 'Nombre Cliente';
+        const recipientAddress = getHTML('recipient-address') || 'Dirección Cliente';
+        const recipientTaxId = getVal('recipient-tax-id');
+        const recipientContact = getVal('recipient-contact') || 'Email Cliente';
+
+        const invoiceNumber = getVal('invoice-number') || 'FACT-XXXX';
+        const invoiceDate = getVal('invoice-date') || 'Fecha Emisión';
+        const dueDate = getVal('due-date');
+
+        const notes = getHTML('notes');
+        const color = getVal('invoice-color') || '#d4af37'; // Color por defecto si no se selecciona
+        const template = getVal('invoice-template'); // Podría usarse para cambiar clases/estilos
+
+        // --- Generar HTML de la previsualización ---
+        // Incluye los estilos directamente aquí para que la copia al portapapeles (HTML) los mantenga
+        // NOTA: Los estilos se aplican al HTML, html2canvas intentará renderizarlos en la imagen.
+        let previewHTML = `
+            <style>
+                /* Estilos base para el contenedor del PDF/Previsualización */
+                .preview-container {
+                    border: 1px solid #eee; /* Borde más suave */
+                    padding: 30px; /* Padding interno */
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    font-size: 10pt; /* Tamaño base para impresión */
+                    color: #333;
+                    background-color: #fff;
+                    max-width: 800px; /* Ancho típico A4 */
+                    margin: 0 auto; /* Centrado */
+                    box-shadow: 0 0 10px rgba(0,0,0,0.1); /* Sombra suave */
+                    line-height: 1.5; /* Mejor legibilidad */
+                    box-sizing: border-box; /* Asegurar que padding no aumente el tamaño total */
+                }
+                .preview-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 30px; /* Reducido ligeramente */
+                    border-bottom: 3px solid ${color};
+                    padding-bottom: 15px; /* Reducido ligeramente */
+                    gap: 20px; /* Espacio entre logo/datos y detalles factura */
+                }
+                .preview-header .sender-info {
+                    font-size: 0.9em;
+                    line-height: 1.4;
+                    flex: 1; /* Ocupar espacio disponible */
+                }
+                 .preview-header .sender-info img.preview-logo { /* Estilo específico para el logo aquí */
+                    max-width: 160px; /* Ajustado */
+                    max-height: 80px; /* Ajustado */
+                    margin-bottom: 10px; /* Espacio bajo el logo */
+                    object-fit: contain;
+                }
+                .preview-header .sender-info strong {
+                    color: ${color};
+                    font-size: 1.15em; /* Ligeramente más grande */
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: bold;
+                }
+                .preview-header .invoice-details {
+                    text-align: right;
+                    flex-shrink: 0; /* Evitar que se encoja */
+                    font-size: 0.9em;
+                }
+                .preview-header .invoice-details h2 {
+                    margin: 0 0 10px 0;
+                    color: ${color};
+                    font-size: 1.7em; /* Ajustado */
+                    text-transform: uppercase;
+                    font-weight: bold;
+                }
+                 .preview-header .invoice-details div { margin-bottom: 3px; }
+                 .preview-header .invoice-details strong {
+                     display: inline-block;
+                     min-width: 110px; /* Ajustado */
+                     font-weight: bold;
+                     color: #555;
+                     text-align: left; /* Mejor alineación de etiquetas */
+                 }
+                 .preview-header .invoice-details span {
+                     display: inline-block;
+                     min-width: 80px; /* Espacio para el valor */
+                     text-align: right;
+                 }
+                .preview-recipient {
+                    margin-bottom: 30px; /* Reducido */
+                    padding: 12px 15px; /* Ajustado */
+                    border: 1px solid #eee;
+                    background-color: #fdfdfd; /* Casi blanco */
+                    border-radius: 4px;
+                    line-height: 1.4;
+                }
+                .preview-recipient strong.recipient-label {
+                    display: block;
+                    margin-bottom: 6px; /* Ajustado */
+                    color: #555;
+                    font-weight: bold;
+                    font-size: 1em; /* Tamaño normal */
+                }
+                 .preview-recipient .recipient-name {
+                    font-weight: bold;
+                    font-size: 1.05em; /* Ligeramente destacado */
+                    color: #333;
+                    margin-bottom: 3px;
+                    display: inline-block; /* Para que el <br> funcione bien */
+                 }
+                .preview-items table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 20px; /* Reducido */
+                }
+                .preview-items th,
+                .preview-items td {
+                    border: 1px solid #ddd;
+                    padding: 8px 10px; /* Ajustado */
+                    text-align: left;
+                    vertical-align: top;
+                    font-size: 0.95em; /* Ligeramente más pequeño para caber más */
+                }
+                .preview-items th {
+                    background-color: ${color};
+                    color: #fff;
+                    font-weight: bold;
+                    white-space: nowrap; /* Evitar que títulos largos se rompan */
+                }
+                .preview-items td.number,
+                .preview-items th.number {
+                    text-align: right;
+                    white-space: nowrap;
+                }
+                .preview-items tbody tr:nth-child(even) {
+                    background-color: #f9f9f9;
+                }
+                /* .preview-items tbody tr:hover { background-color: #f0f0f0; } /* Hover no relevante en PDF */
+                .preview-totals {
+                    text-align: right;
+                    margin-bottom: 20px; /* Reducido */
+                    padding-top: 15px; /* Reducido */
+                    border-top: 2px solid #eee;
+                }
+                .preview-totals div {
+                    margin-bottom: 6px; /* Ajustado */
+                    font-size: 1em; /* Tamaño normal */
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 15px;
+                }
+                .preview-totals strong {
+                    min-width: 120px;
+                    color: #555;
+                    text-align: right;
+                    font-weight: bold;
+                }
+                .preview-totals span {
+                    font-weight: normal;
+                    min-width: 90px; /* Más espacio para valores */
+                    text-align: right;
+                    font-family: Consolas, monospace; /* Fuente monoespaciada para números */
+                }
+                .preview-totals .total-line {
+                    margin-top: 8px; /* Ajustado */
+                    padding-top: 8px; /* Ajustado */
+                    border-top: 1px solid #ccc;
+                }
+                .preview-totals .total-line strong,
+                .preview-totals .total-line span {
+                    color: ${color};
+                    font-size: 1.2em; /* Destacado */
+                    font-weight: bold;
+                }
+                .preview-notes {
+                    border-top: 1px solid #eee;
+                    padding-top: 15px; /* Reducido */
+                    margin-top: 20px; /* Reducido */
+                    font-size: 0.85em; /* Más pequeño */
+                    color: #666;
+                    line-height: 1.4;
+                }
+                .preview-notes strong {
+                    color: #333;
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: bold;
+                    font-size: 1.05em; /* Ligeramente más grande que el texto de notas */
+                }
+                /* Clase para ocultar elementos vacíos (si se usara) */
+                .empty { display: none; }
+            </style>
+            <div class="preview-container" id="invoice-content-for-copy"> <!-- ID cambiado para claridad -->
+                <div class="preview-header">
+                    <div class="sender-info">
+                        ${logoVisible ? `<img src="${logoSrc}" alt="Logo" class="preview-logo"><br>` : ''}
+                        <strong>${senderName}</strong><br>
+                        ${senderAddress}<br>
+                        ${senderTaxId ? `NIF/CIF: ${senderTaxId}<br>` : ''}
+                        ${senderContact}
+                    </div>
+                    <div class="invoice-details">
+                        <h2>Factura</h2>
+                        <div><strong>Nº Factura:</strong> <span>${invoiceNumber}</span></div>
+                        <div><strong>Fecha Emisión:</strong> <span>${invoiceDate}</span></div>
+                        ${dueDate ? `<div><strong>Fecha Vencimiento:</strong> <span>${dueDate}</span></div>` : ''}
+                    </div>
+                </div>
+
+                <div class="preview-recipient">
+                    <strong class="recipient-label">Facturar a:</strong>
+                    <span class="recipient-name">${recipientName}</span><br>
+                    ${recipientAddress}<br>
+                    ${recipientTaxId ? `NIF/CIF: ${recipientTaxId}<br>` : ''}
+                    ${recipientContact}
+                </div>
+
+                <div class="preview-items">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Descripción</th>
+                                <th class="number">Cantidad</th>
+                                <th class="number">Precio Unit.</th>
+                                <th class="number">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+        // Añadir filas de items
+        const itemRows = itemsContainer.querySelectorAll('.item-row');
+        let hasItems = false; // Flag to check if any valid item row is added
+        if (itemRows.length > 0) {
+            itemRows.forEach(row => {
+                const descInput = row.querySelector('input[name="item-description[]"]');
+                const qtyInput = row.querySelector('input[name="item-quantity[]"]');
+                const priceInput = row.querySelector('input[name="item-price[]"]');
+
+                // Solo añadir fila si tiene descripción o cantidad/precio válidos
+                if (descInput.value.trim() || (parseFloat(qtyInput.value) || 0) > 0 || (parseFloat(priceInput.value) || 0) > 0) {
+                    hasItems = true; // Mark that we found at least one item
+                    const desc = descInput.value.trim() || '-';
+                    const qty = parseFloat(qtyInput.value) || 0;
+                    // Formatear cantidad: entero si es entero, si no, decimales según step
+                    const step = qtyInput.step;
+                    const decimals = step && step.includes('.') ? step.split('.')[1].length : 0;
+                    const qtyFormatted = Number.isInteger(qty) ? qty : qty.toFixed(decimals);
+
+                    const price = parseFloat(priceInput.value) || 0;
+                    const total = qty * price;
+                    previewHTML += `
+                                    <tr>
+                                        <td>${desc}</td>
+                                        <td class="number">${qtyFormatted}</td>
+                                        <td class="number">${formatCurrency(price)}</td>
+                                        <td class="number">${formatCurrency(total)}</td>
+                                    </tr>`;
+                }
+            });
+        }
+
+        // Si después de iterar no se encontró ningún item válido
+        if (!hasItems) {
+             previewHTML += `<tr><td colspan="4" style="text-align: center; color: #888; padding: 20px;">No hay conceptos añadidos.</td></tr>`;
+        }
+
+
+        previewHTML += `
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="preview-totals">
+                    <div><strong>Subtotal:</strong> <span>${document.getElementById('subtotal').textContent}</span></div>
+                    <div><strong>IVA (${getVal('tax-rate') || 0}%):</strong> <span>${document.getElementById('tax-amount').textContent}</span></div>
+                    <div class="total-line"><strong>TOTAL:</strong> <span>${document.getElementById('total-amount').textContent}</span></div>
+                </div>
+
+                ${notes && notes.trim() && notes !== '<br>' ? `
+                <div class="preview-notes">
+                    <strong>Notas y Términos:</strong>
+                    ${notes}
+                </div>` : ''}
+            </div>`; // Fin preview-container
+
+        return previewHTML;
+    }
+
+
+    function showPreview() {
+        try {
+            const previewHTML = generatePreviewHTML();
+            previewContent.innerHTML = previewHTML;
+            previewSection.style.display = 'block';
+            // Opcional: scroll suave a la previsualización
+            // previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (error) {
+            console.error("Error al generar la previsualización:", error);
+            previewContent.innerHTML = '<p class="text-danger text-center" style="color: red;">Error al generar la previsualización. Revisa los datos introducidos.</p>';
+            previewSection.style.display = 'block'; // Mostrar el mensaje de error
+        }
+    }
+
+    async function copyInvoice() {
+        // 1. Asegurar que la previsualización esté generada y actualizada
+        try {
+            // Asegurarse de que la previsualización esté visible antes de continuar
+            if (previewSection.style.display === 'none' || !previewContent.querySelector('#invoice-content-for-copy')) {
+                console.log("Generando previsualización antes de copiar...");
+                showPreview(); // Genera y muestra la previsualización si no está visible
+            } else {
+                console.log("Previsualización ya visible, actualizando contenido si es necesario...");
+                // Opcional: Forzar regeneración para asegurar datos más recientes, aunque calculateTotals ya lo hace
+                // showPreview();
+            }
+             // Pequeña pausa para asegurar que showPreview() termine de renderizar en el DOM
+             await new Promise(resolve => setTimeout(resolve, 50));
+
+        } catch (error) {
+            console.error("Error al generar previsualización antes de copiar:", error);
+            alert("Error al preparar la factura para copiar. Revisa los datos y vuelve a intentarlo.");
+            return; // Detener si la previsualización falla
+        }
+
+        const elementToCopy = document.getElementById('invoice-content-for-copy');
+        const originalButtonText = '<i class="fas fa-copy"></i> Copiar Factura';
+        copyBtn.disabled = true;
+        copyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Copiando Imagen...';
+
+        // Comprobar si el elemento existe y tiene contenido significativo
+        if (!elementToCopy || !elementToCopy.innerHTML || elementToCopy.textContent.trim() === '' || elementToCopy.textContent.includes("Error al generar")) {
+            console.error("Error: Contenido de previsualización no válido o no encontrado para copiar.");
+            alert("Error: No se puede copiar la factura. La previsualización está vacía o contiene errores. Asegúrate de que la factura tiene datos válidos.");
+            copyBtn.disabled = false;
+            copyBtn.innerHTML = originalButtonText;
+            // Asegurarse que la sección de preview (aunque con error) siga visible si se mostró
+            if (previewSection.style.display === 'none') {
+                previewSection.style.display = 'block';
+            }
+            return; // Detener si el elemento no es válido
+        }
+         // Comprobación específica para "No hay conceptos" si se considera inválido para copiar
+         if (elementToCopy.textContent.includes("No hay conceptos añadidos")) {
+             console.warn("Intento de copiar factura sin conceptos añadidos.");
+             alert("No se puede copiar una factura sin conceptos.");
+             copyBtn.disabled = false;
+             copyBtn.innerHTML = originalButtonText;
+             // Asegurarse que la sección de preview siga visible
+             if (previewSection.style.display === 'none') {
+                 previewSection.style.display = 'block';
+             }
+             return; // Detener si no hay items
+         }
+
+        try {
+            // Usar html2canvas para renderizar el elemento a un canvas
+            const canvas = await html2canvas(elementToCopy, {
+                scale: 2, // Aumentar escala para mejor resolución (opcional)
+                useCORS: true, // Necesario si el logo es de un origen diferente
+                backgroundColor: '#ffffff' // Asegurar fondo blanco si no está explícito
+            });
+
+            // Convertir el canvas a un Blob (imagen PNG)
+            canvas.toBlob(async (blob) => {
+                if (!blob) {
+                    throw new Error("No se pudo generar el Blob de la imagen desde el canvas.");
+                }
+                try {
+                    // Crear un ClipboardItem con el Blob de imagen
+                    const clipboardItem = new ClipboardItem({ 'image/png': blob });
+
+                    // Escribir el ClipboardItem en el portapapeles
+                    await navigator.clipboard.write([clipboardItem]);
+
+                    console.log('Imagen de la factura copiada al portapapeles.');
+                    copyBtn.innerHTML = '<i class="fas fa-check"></i> ¡Imagen Copiada!';
+
+                    // Revertir el texto del botón después de un tiempo
+                    setTimeout(() => {
+                        copyBtn.disabled = false;
+                        copyBtn.innerHTML = originalButtonText;
+                    }, 2500); // 2.5 segundos
+
+                } catch (clipboardErr) {
+                    console.error('Error al escribir la imagen en el portapapeles:', clipboardErr);
+                    alert('Error al copiar la imagen de la factura automáticamente. Es posible que tu navegador no soporte esta función o que se haya denegado el permiso.');
+                    copyBtn.disabled = false;
+                    copyBtn.innerHTML = originalButtonText;
+                }
+            }, 'image/png');
+
+        } catch (err) {
+            console.error('Error al generar o copiar la imagen de la factura:', err);
+            alert('Error al generar la imagen de la factura para copiar. Detalles: ' + err.message);
+            copyBtn.disabled = false;
+            copyBtn.innerHTML = originalButtonText;
+        }
+    }
+
+
+    // --- Inicialización y Event Listeners ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // Establecer fecha actual por defecto
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('invoice-date').value = today;
+
+        // Añadir una fila de item inicial
+        addItem();
+
+        // Listeners principales
+        invoiceForm.addEventListener('input', (event) => {
+            // Recalcula con cualquier cambio en inputs o textareas del formulario
+            if (event.target.matches('input, textarea, select')) {
+                 calculateTotals();
+            }
+        });
+        addItemBtn.addEventListener('click', addItem);
+        previewBtn.addEventListener('click', showPreview);
+        copyBtn.addEventListener('click', copyInvoice); // Llama a la nueva función copyInvoice
+
+        // Listener para previsualización de logo
+        logoUpload.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            const previewImg = document.getElementById('logo-preview');
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImg.src = e.target.result;
+                    previewImg.style.display = 'block';
+                    // Actualizar previsualización si está visible
+                     if (previewSection.style.display !== 'none') {
+                        showPreview();
+                    }
+                }
+                reader.readAsDataURL(file);
+            } else {
+                // Si no hay archivo o no es imagen, ocultar y limpiar src
+                previewImg.src = '#'; // Limpiar src para evitar errores
+                previewImg.style.display = 'none';
+                 // Actualizar previsualización si está visible
+                 if (previewSection.style.display !== 'none') {
+                    showPreview();
+                }
+            }
+        });
+
+        // Listener para limpiar formulario (reset)
+        invoiceForm.addEventListener('reset', () => {
+            // El reset nativo limpia los campos, pero necesitamos acciones adicionales:
+            // 1. Ocultar previsualización del logo y limpiar src
+            logoPreview.src = '#';
+            logoPreview.style.display = 'none';
+            // 2. Eliminar todas las filas de items y añadir una nueva
+            itemsContainer.innerHTML = ''; // Limpiar items existentes
+            addItem(); // Añadir la primera fila vacía
+            // 3. Ocultar la sección de previsualización y restaurar mensaje inicial
+            previewSection.style.display = 'none';
+            previewContent.innerHTML = '<p class="text-muted text-center" style="color: #666;">La previsualización de la factura aparecerá aquí...</p>';
+            // 4. Poner fecha actual de nuevo (el reset la borra)
+             setTimeout(() => { // Pequeño delay para asegurar que el reset se completó
+                 const today = new Date().toISOString().split('T')[0];
+                 document.getElementById('invoice-date').value = today;
+                 // Restaurar color por defecto y moneda
+                 document.getElementById('invoice-color').value = '#d4af37';
+                 document.getElementById('currency-symbol').value = '€';
+                 document.getElementById('tax-rate').value = '21'; // Restaurar IVA por defecto
+                 calculateTotals(); // Asegurar cálculo final con valores reseteados
+             }, 0);
+        });
+
+
+        // Calcular totales iniciales (para la fila añadida por defecto)
+        calculateTotals();
+    });
+
+</script>
+
+</body>
+</html>
